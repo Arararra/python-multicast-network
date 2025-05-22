@@ -1,12 +1,22 @@
 import socket
 import struct
 import json
+import sys
 from collections import defaultdict
 
 MCAST_GRP = '224.1.1.1'
 DELIMITER = b'##HEADER_END##'
 
 received_chunks = defaultdict(dict)
+progress_state = {}
+
+def print_progress(name, index, total):
+  percent = int((index + 1) / total * 100)
+  bar_length = 30
+  filled_length = int(bar_length * percent // 100)
+  bar = '=' * filled_length + '-' * (bar_length - filled_length)
+  sys.stdout.write(f"\r📥 [{bar}] {percent}% menerima file: {name}")
+  sys.stdout.flush()
 
 def save_if_complete(header):
   name = header['name']
@@ -20,6 +30,7 @@ def save_if_complete(header):
         f.write(received[i])
     print(f"✅ File '{name}' berhasil disimpan!\n")
     del received_chunks[name]
+    del progress_state[name]
 
 def start_receiver(port):
   sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -51,11 +62,16 @@ def start_receiver(port):
         index = header['index']
         total = header['total']
         received_chunks[name][index] = payload
-        print(f"📥 Chunk {index+1}/{total} dari file '{name}' diterima.")
+
+        if name not in progress_state:
+          progress_state[name] = set()
+        progress_state[name].add(index)
+
+        print_progress(name, len(progress_state[name]) - 1, total)
         save_if_complete(header)
 
     except Exception as e:
-      print(f"❌ Error parsing data: {e}")
+      print(f"\n❌ Error parsing data: {e}")
       continue
 
 if __name__ == "__main__":
